@@ -14,17 +14,75 @@ library(tidyverse)
 
 The Washington Post has gathered data on homicides in 50 large U.S. cities and made the data available through a GitHub repository.
 
-```{r p1_data}
-df_homicide = read_csv("data/homicide-data.csv")
-```
-
 Create a city_state variable (e.g. “Baltimore, MD”), and a binary variable indicating whether the homicide is solved. Omit cities Dallas, TX; Phoenix, AZ; and Kansas City, MO – these don’t report victim race. Also omit Tulsa, AL – this is a data entry mistake. For this problem, limit your analysis those for whom victim_race is white or black. Be sure that victim_age is numeric.
+
+```{r p1_data}
+df_homicide = read_csv("data/homicide-data.csv") %>%
+  mutate(city_state = str_c(city, ", ", state),
+         resolved = 1 - as.numeric((disposition == "Closed without arrest" | 
+           disposition == "Open/No arrest")),
+         victim_age = as.numeric(victim_age)) %>%
+  filter((city_state != "Dallas, TX" & city_state != "Phoenix, AZ" & 
+            city_state != "Kansas City, MO" & city_state != "Tulsa, AL") & 
+           (victim_race == "White" | victim_race == "Black"))
+```
 
 For the city of Baltimore, MD, use the glm function to fit a logistic regression with resolved vs unresolved as the outcome and victim age, sex and race as predictors. Save the output of glm as an R object; apply the broom::tidy to this object; and obtain the estimate and confidence interval of the adjusted odds ratio for solving homicides comparing male victims to female victims keeping all other variables fixed.
 
+```{r p1_baltimore}
+model_baltimore = df_homicide %>%
+  filter(city_state == "Baltimore, MD") %>%
+  glm(resolved ~ victim_age + victim_race + victim_sex, data = ., 
+      family = binomial()) 
+
+model_baltimore %>%
+  broom::tidy() %>%
+  mutate(OR = exp(estimate),
+         lower.bound = exp(estimate - 1.96*std.error),
+         upper.bound = exp(estimate + 1.96*std.error)) %>%
+  select(term, OR, lower.bound, upper.bound) %>%
+  knitr::kable(digits = 3)
+```
+
+**When the victim is male, the homicide is less likely to be resolved than if it were female, all other predictors held constant.**
+
 Now run glm for each of the cities in your dataset, and extract the adjusted odds ratio (and CI) for solving homicides comparing male victims to female victims. Do this within a “tidy” pipeline, making use of purrr::map, list columns, and unnest as necessary to create a dataframe with estimated ORs and CIs for each city.
 
+```{r p1_all_cities}
+glm_cities_results = df_homicide %>%
+  nest(data = -city_state) %>%
+  mutate(
+    models = map(data, \(df) glm(resolved ~ victim_age + victim_race + 
+                                   victim_sex, data = df, family = binomial())),
+    results = map(models, broom::tidy)) |> 
+  select(-data, -models) |> 
+  unnest(results) %>%
+  filter(term == "victim_sexMale") %>%
+  mutate(OR = exp(estimate),
+         lower.bound = exp(estimate - 1.96*std.error),
+         upper.bound = exp(estimate + 1.96*std.error)) %>%
+  select(city_state, OR, lower.bound, upper.bound)
+
+glm_cities_results %>% 
+  head(4) %>%
+  knitr::kable(digits = 3)
+  
+```
+
 Create a plot that shows the estimated ORs and CIs for each city. Organize cities according to estimated OR, and comment on the plot.
+
+```{r p1_plot}
+glm_cities_results %>%
+  mutate(city_state = fct_reorder(city_state, OR)) %>%
+  ggplot() + 
+  geom_point(aes(x = city_state, y = OR)) + 
+  geom_errorbar(aes(x = city_state, ymin = lower.bound, ymax = upper.bound)) +
+  theme(axis.text.x = element_text(angle = 80, hjust = 1)) + 
+  labs(title = "Odds ratio of homicide being solved if victim is male", 
+       y = "Odds ratio", x = "City")
+```
+
+**In the plot, we see that in cities like New York, Baton Rouge and Omaha, homicides are likelier to go unresolved if the victim is male. The confidence intervals of cities further right all include 1, so homicides where the victim is male or female are equally likely to go unsolved. No confidence interval lower bound is greater than 1 (which would indicate homicides in that city are likelier to go unresolved if the vicitm is female, compared to male).**
 
 # Problem 2
 
