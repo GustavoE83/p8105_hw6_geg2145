@@ -116,7 +116,7 @@ Use 5000 bootstrap samples and, for each bootstrap sample, produce estimates of 
 ```{r p2_bootstrap}
 bootstrap_results = 
   df_weather %>%
-  modelr::bootstrap(n = 1000) %>%
+  modelr::bootstrap(n = 5000) %>%
   mutate(
     models = map(strap, \(df) lm(tmax ~ tmin + prcp, 
                                         data = df) ),
