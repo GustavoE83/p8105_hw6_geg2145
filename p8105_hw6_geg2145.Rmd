@@ -156,8 +156,6 @@ bootstrap_results %>%
   knitr::kable(digits = 3)
 ```
 
-
-
 # Problem 3
 
 In this problem, you will analyze data gathered to understand the effects of several variables on a child’s birthweight. This dataset, consists of roughly 4000 children and includes the following variables:
@@ -205,10 +203,64 @@ In this problem, you will analyze data gathered to understand the effects of sev
 Load and clean the data for regression analysis (i.e. convert numeric to factor where appropriate, check for missing data, etc.).
 
 ```{r p3_data}
-df_birthweight = read_csv("data/birthweight.csv")
+df_birthweight = read_csv("data/birthweight.csv") %>%
+  mutate(
+    babysex = case_when(
+      babysex == 1 ~  "male",
+      babysex == 2 ~  "female"
+    ),
+    frace = case_when(
+      frace == 1 ~ "White",
+      frace == 2 ~ "Black",
+      frace == 3 ~ "Asian",
+      frace == 4 ~ "Puerto Rican",
+      frace == 8 ~ "Other",
+      T ~ NA),
+    malform = case_when(
+      malform == 0 ~ " absent",
+      malform == 1 ~ " present"
+    ),
+    mrace = case_when(
+      mrace == 1 ~ "White",
+      mrace == 2 ~ "Black",
+      mrace == 3 ~ "Asian",
+      mrace == 4 ~ "Puerto Rican",
+      mrace == 8 ~ "Other",
+      T ~ NA)
+    ) %>%
+  select(-pnumlbw,-pnumsga)
 ```
 
 Propose a regression model for `birthweight`. This model may be based on a hypothesized structure for the factors that underly `birthweight`, on a data-driven model-building process, or a combination of the two. Describe your modeling process and show a plot of model residuals against fitted values – use `add_predictions` and `add_residuals` in making this plot.
+
+**We first looked at the numeric variables that correlated the highest with ` bwt`.**
+
+```{r p3_correlations}
+ df_birthweight %>%
+  select_if(.,is.numeric) %>%
+  cor(.) %>%
+  as.data.frame() %>%
+  add_rownames(var = "variable")  %>%
+  tibble() %>%
+  select(variable, bwt) %>%
+  filter(abs(bwt) > 0.2) %>%
+  knitr::kable(digits = 2)
+```
+
+**From these, we will use `delwt`, `gaweeks` and ` wtgain`, to avoid using variables about the baby's features to predict its birthweight.**
+
+```{r p3_my_model}
+my_fit = lm(bwt ~ delwt + gaweeks + wtgain, data = df_birthweight)
+
+df_birthweight %>%
+  modelr::add_residuals(my_fit) %>%
+  modelr::add_predictions(my_fit) %>%
+  ggplot(aes(x = pred, y = resid)) + geom_point(alpha = 0.25) + 
+  labs(title = "Proposed linear model predictions and residuals",
+       x = "Predictions", y = " Residuals")
+```
+
+**From this plot, we can see that lower predictions have bigger residuals (in terms of magnitude), which makes us worried that the residuals are not independent from the predicted values. The variance of the residuals also does not seem to be constant across predicted values. These observations are indicative that all linear model assumptions might not be met, and that we'd need bootstrap to interpret coefficient estimates, as opposed to using the Normality assumption to get their confidence intervals.**
 
 Compare your model to two others:
 
